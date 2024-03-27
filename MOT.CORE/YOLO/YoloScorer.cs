@@ -255,6 +255,52 @@ namespace MOT.CORE.YOLO
             return tensor;
         }
 
+//        private Tensor<float> ExtractPixelsOpenCV(Bitmap image)
+//        {
+//#if DEBUG
+//            if (image.Width != _yoloModel.Width || image.Height != _yoloModel.Height)
+//                throw new Exception("Image width and height is not equal to model width and height.");
+//#endif
+//            Rectangle rectangle = new Rectangle(0, 0, image.Width, image.Height);
+            
+//            int bytesPerPixel = Image.GetPixelFormatSize(image.PixelFormat) / 8;
+
+//            Mat mat = OpenCvSharp.Extensions.BitmapConverter.ToMat(image);
+
+//            //mat.SaveImage("Mat.jpg");
+//            int width = mat.Width;
+//            int height = mat.Height;
+//            DenseTensor<float> tensor = new DenseTensor<float>(new[] { _yoloModel.BatchSize, _yoloModel.Channels, _yoloModel.Height, _yoloModel.Width });
+
+//            unsafe
+//            {
+//                Span<float> rTensorSpan = tensor.Buffer.Span;
+//                Span<float> gTensorSpan = rTensorSpan.Slice(height * width, height * width);
+//                Span<float> bTensorSpan = rTensorSpan.Slice(height * width * 2, height * width);
+
+//                byte* scan0 = (byte*)mat.DataPointer;
+//                int stride = (int)mat.Step();
+
+//                for (int y = 0; y < height; y++)
+//                {
+//                    byte* row = scan0 + (y * stride);
+//                    int rowOffset = y * width;
+
+//                    for (int x = 0; x < width; x++)
+//                    {
+//                        int bIndex = x * bytesPerPixel;
+//                        int point = rowOffset + x;
+//                        rTensorSpan[point] = row[bIndex + 2] / 255.0f; //R
+//                        gTensorSpan[point] = row[bIndex + 1] / 255.0f; //G
+//                        bTensorSpan[point] = row[bIndex] / 255.0f; //B
+//                    }
+//                }
+
+//            }
+
+//            return tensor;
+//        }
+
         private Tensor<float> ExtractPixelsParallel(Bitmap image)
         {
 #if DEBUG
