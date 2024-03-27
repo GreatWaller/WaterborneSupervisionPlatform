@@ -10,6 +10,7 @@ using MOT.CORE.Matchers.Abstract;
 using System.Runtime.CompilerServices;
 using MOT.CORE.Matchers.Trackers;
 using MOT.CORE.ReID;
+using System.Diagnostics;
 
 namespace MOT.CORE.Matchers.Deep
 {
@@ -20,6 +21,7 @@ namespace MOT.CORE.Matchers.Deep
         private readonly IAppearanceExtractor _appearanceExtractor;
 
         private List<PoolObject<KalmanTracker<DeepSortTrack>>> _trackers = new List<PoolObject<KalmanTracker<DeepSortTrack>>>();
+        Stopwatch stopwatch = new Stopwatch();
 
         public DeepSortMatcher(IPredictor predictor, IAppearanceExtractor appearanceExtractor,
             float appearanceWeight = 0.775f, float threshold = 0.5f, int maxMisses = 50,
@@ -48,7 +50,14 @@ namespace MOT.CORE.Matchers.Deep
 
         public override IReadOnlyList<ITrack> Run(Bitmap frame, float targetConfidence, params DetectionObjectType[] detectionObjectTypes)
         {
+            stopwatch.Start();
             IPrediction[] detectedObjects = _predictor.Predict(frame, targetConfidence, detectionObjectTypes).ToArray();
+            stopwatch.Stop();
+
+            // 输出经过的时间
+            Trace.TraceInformation("Predict 消耗的时间: {0}", stopwatch.Elapsed);
+            // 重置计时器
+            stopwatch.Reset();
             if (detectedObjects.Length == 0)
             {
                 return new List<ITrack>();

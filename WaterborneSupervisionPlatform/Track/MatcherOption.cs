@@ -53,7 +53,8 @@ namespace WaterborneSupervisionPlatform.Track
     public enum YoloVersion : byte
     {
         Yolo1280 = 0,
-        Yolo640
+        Yolo640,
+        Yolov8,
     }
 
     public enum AppearanceExtractorVersion : byte

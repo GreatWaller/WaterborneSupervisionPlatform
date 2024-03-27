@@ -47,7 +47,7 @@ namespace MOT.CORE.YOLO
 
             IDisposableReadOnlyCollection<DisposableNamedOnnxValue> onnxOutput = _inferenceSession.Run(inputs, _yoloModel.Outputs);
             List<YoloPrediction> predictions = Suppress(ParseOutput(onnxOutput.First().Value as DenseTensor<float>,
-                                                        targetConfidence, image, targetDetectionTypes));
+                                                        targetConfidence, image, false, targetDetectionTypes));
 
             onnxOutput.Dispose();
 
@@ -59,7 +59,7 @@ namespace MOT.CORE.YOLO
             _inferenceSession.Dispose();
         }
 
-        private YoloPrediction[] ParseOutput(DenseTensor<float> output, float targetConfidence, Image image, params DetectionObjectType[] targetDetectionTypes)
+        private YoloPrediction[] ParseOutput(DenseTensor<float> output, float targetConfidence, Image image,  bool isYolov8, params DetectionObjectType[] targetDetectionTypes)
         {
             unsafe
             {
@@ -71,41 +71,87 @@ namespace MOT.CORE.YOLO
                 (float xPad, float yPad) = ((_yoloModel.Width - width * gain) / 2, (_yoloModel.Height - height * gain) / 2);
                 var spanOutput = output.Buffer.Span;
 
-                for (int i = 0; i < (int)output.Length / _yoloModel.Dimensions; i++)
+                if (isYolov8)
                 {
-                    int iOffset = i * _yoloModel.Dimensions;
-
-                    if (spanOutput[iOffset + 4] <= _yoloModel.Confidence)
-                        continue;
-
-                    for (int j = 5; j < _yoloModel.Dimensions; j++)
+                    for (int i = 0; i < output.Dimensions[2]; i++)
+                    //Parallel.For(0, output.Dimensions[2], i =>
                     {
-                        spanOutput[i * _yoloModel.Dimensions + j] *= spanOutput[i * _yoloModel.Dimensions + 4];
-                        DetectionObjectType objectType = (DetectionObjectType)(j);
+                        for (int j = 0; j < output.Dimensions[1] - 4; j++)
+                        //Parallel.For(0, _yoloModel.Dimensions - 4, j =>
+                        {
+                            var confidence = output[0, j + 4, i];
+                            DetectionObjectType objectType = (DetectionObjectType)(j+5);
 
-                        if ((targetDetectionTypes.Length != 0 
-                            && !targetDetectionTypes.Any(p => p == objectType))
-                            || spanOutput[iOffset + j] < targetConfidence)
-                            continue;
+                            if ((targetDetectionTypes.Length != 0
+                                && !targetDetectionTypes.Any(p => p == objectType))
+                                || confidence < targetConfidence)
+                                continue;
 
-                        if (spanOutput[i * _yoloModel.Dimensions + j] <= _yoloModel.MulConfidence)
-                            continue;
+                            if (confidence <= _yoloModel.Confidence)
+                                continue;
 
-                        float xMin = ((spanOutput[iOffset + 0] - spanOutput[iOffset + 2] / 2) - xPad) / gain; // Unpad bbox top-left-x to original
-                        float yMin = ((spanOutput[iOffset + 1] - spanOutput[iOffset + 3] / 2) - yPad) / gain; // Unpad bbox top-left-y to original
-                        float xMax = ((spanOutput[iOffset + 0] + spanOutput[iOffset + 2] / 2) - xPad) / gain; // Unpad bbox bottom-right-x to original
-                        float yMax = ((spanOutput[iOffset + 1] + spanOutput[iOffset + 3] / 2) - yPad) / gain; // Unpad bbox bottom-right-y to original
+                            var x = output[0, 0, i];
+                            var y = output[0, 1, i];
+                            var w = output[0, 2, i];
+                            var h = output[0, 3, i];
 
-                        xMin = Clamp(xMin, 0, width); // Clip bbox top-left-x to boundaries
-                        yMin = Clamp(yMin, 0, height); // Clip bbox top-left-y to boundaries
-                        xMax = Clamp(xMax, 0, width - 1); // Clip bbox bottom-right-x to boundaries
-                        yMax = Clamp(yMax, 0, height - 1); // Clip bbox bottom-right-y to boundaries
+                            var xMin = (x - w / 2 - xPad) / gain;
+                            var yMin = (y - h / 2 - yPad) / gain;
+                            var xMax = (x + w / 2 - xPad) / gain;
+                            var yMax = (y + h / 2 - yPad) / gain;
 
-                        YoloPrediction prediction = new YoloPrediction(objectType, spanOutput[iOffset + j], new Rectangle((int)xMin, (int)yMin, (int)(xMax - xMin), (int)(yMax - yMin)));
+                            xMin = Clamp(xMin, 0, width); // Clip bbox top-left-x to boundaries
+                            yMin = Clamp(yMin, 0, height); // Clip bbox top-left-y to boundaries
+                            xMax = Clamp(xMax, 0, width - 1); // Clip bbox bottom-right-x to boundaries
+                            yMax = Clamp(yMax, 0, height - 1); // Clip bbox bottom-right-y to boundaries
 
-                        result.Add(prediction);
+                            YoloPrediction prediction = new YoloPrediction(objectType, confidence, new Rectangle((int)xMin, (int)yMin, (int)(xMax - xMin), (int)(yMax - yMin)));
+
+                            result.Add(prediction);
+                            //    });
+                            //});
+                        }
                     }
                 }
+                else
+                {
+                    for (int i = 0; i < (int)output.Length / _yoloModel.Dimensions; i++)
+                    {
+                        int iOffset = i * _yoloModel.Dimensions;
+
+                        if (spanOutput[iOffset + 4] <= _yoloModel.Confidence)
+                            continue;
+
+                        for (int j = 5; j < _yoloModel.Dimensions; j++)
+                        {
+                            spanOutput[i * _yoloModel.Dimensions + j] *= spanOutput[i * _yoloModel.Dimensions + 4];
+                            DetectionObjectType objectType = (DetectionObjectType)(j);
+
+                            if ((targetDetectionTypes.Length != 0
+                                && !targetDetectionTypes.Any(p => p == objectType))
+                                || spanOutput[iOffset + j] < targetConfidence)
+                                continue;
+
+                            if (spanOutput[i * _yoloModel.Dimensions + j] <= _yoloModel.MulConfidence)
+                                continue;
+
+                            float xMin = ((spanOutput[iOffset + 0] - spanOutput[iOffset + 2] / 2) - xPad) / gain; // Unpad bbox top-left-x to original
+                            float yMin = ((spanOutput[iOffset + 1] - spanOutput[iOffset + 3] / 2) - yPad) / gain; // Unpad bbox top-left-y to original
+                            float xMax = ((spanOutput[iOffset + 0] + spanOutput[iOffset + 2] / 2) - xPad) / gain; // Unpad bbox bottom-right-x to original
+                            float yMax = ((spanOutput[iOffset + 1] + spanOutput[iOffset + 3] / 2) - yPad) / gain; // Unpad bbox bottom-right-y to original
+
+                            xMin = Clamp(xMin, 0, width); // Clip bbox top-left-x to boundaries
+                            yMin = Clamp(yMin, 0, height); // Clip bbox top-left-y to boundaries
+                            xMax = Clamp(xMax, 0, width - 1); // Clip bbox bottom-right-x to boundaries
+                            yMax = Clamp(yMax, 0, height - 1); // Clip bbox bottom-right-y to boundaries
+
+                            YoloPrediction prediction = new YoloPrediction(objectType, spanOutput[iOffset + j], new Rectangle((int)xMin, (int)yMin, (int)(xMax - xMin), (int)(yMax - yMin)));
+
+                            result.Add(prediction);
+                        }
+                    }
+                }
+                
 
                 return result.ToArray();
             }

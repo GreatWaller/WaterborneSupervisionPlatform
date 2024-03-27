@@ -82,6 +82,7 @@ namespace WaterborneSupervisionPlatform.Track
             {
                 YoloVersion.Yolo640 => new YoloScorer<Yolo640v5>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
                 YoloVersion.Yolo1280 => new YoloScorer<Yolo1280v5>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
+                YoloVersion.Yolov8 => new YoloScorer<Yolo640v8>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
                 _ => throw new Exception("Yolo predictor cannot be constructed.")
             };
 
