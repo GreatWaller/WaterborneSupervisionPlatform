@@ -6,6 +6,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -19,7 +20,7 @@ namespace MOT.CORE.YOLO
     {
         private readonly InferenceSession _inferenceSession;
         private readonly TYoloModel _yoloModel;
-
+        private Stopwatch stopwatch= new Stopwatch();
         private YoloScorer()
         {
             _yoloModel = Activator.CreateInstance<TYoloModel>();
@@ -44,11 +45,21 @@ namespace MOT.CORE.YOLO
             {
                 NamedOnnxValue.CreateFromTensor(_yoloModel.Input, ExtractPixels(resized))
             };
-
+            //stopwatch.Start();
             IDisposableReadOnlyCollection<DisposableNamedOnnxValue> onnxOutput = _inferenceSession.Run(inputs, _yoloModel.Outputs);
+            //stopwatch.Stop();
+
+            // 输出经过的时间
+            //Trace.TraceInformation("_inferenceSession.Run 消耗的时间: {0}", stopwatch.Elapsed);
+            //stopwatch.Start();
+
             List<YoloPrediction> predictions = Suppress(ParseOutput(onnxOutput.First().Value as DenseTensor<float>,
                                                         targetConfidence, image, false, targetDetectionTypes));
+            //stopwatch.Stop();
+            //Trace.TraceInformation("Suppress 消耗的时间: {0}", stopwatch.Elapsed);
 
+            // 重置计时器
+            //stopwatch.Reset();
             onnxOutput.Dispose();
 
             return predictions;

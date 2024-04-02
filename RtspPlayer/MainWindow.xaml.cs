@@ -68,7 +68,7 @@ namespace RtspPlayer
                     stopwatch.Stop();
 
                     // 输出经过的时间
-                    Trace.TraceInformation("经过的时间: {0}", stopwatch.Elapsed);
+                    Trace.TraceInformation("经过的时间: {0}", stopwatch.Elapsed.Milliseconds);
                     // 重置计时器
                     stopwatch.Reset();
                     if (tracks.Count > 0)

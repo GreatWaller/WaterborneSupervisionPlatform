@@ -9,6 +9,7 @@ using MOT.CORE.ReID.Models;
 using MOT.CORE.YOLO;
 using MOT.CORE.Utils.DataStructs;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace MOT.CORE.ReID
 {
@@ -19,7 +20,7 @@ namespace MOT.CORE.ReID
 
         private SessionOptions _currentSessionOptions;
         private byte[] _currentModel;
-
+        private Stopwatch stopwatch= new Stopwatch();
         private ReidScorer()
         {
             _reidModel = Activator.CreateInstance<TReidModel>();
@@ -48,13 +49,18 @@ namespace MOT.CORE.ReID
 
             for (int i = _inferenceSessions.Count; i < batchCount; i++)
                 _inferenceSessions.Add(new InferenceSession(_currentModel, _currentSessionOptions));
-
+            stopwatch.Start();
             DenseTensor<float>[] extracted = ExtractSubImages(image, detectedBounds, batchCount);
+            stopwatch.Stop();
+            Trace.TraceInformation($"ExtractSubImages time: {stopwatch.Elapsed.Milliseconds}");
             List<Vector> appearances = new List<Vector>();
             float[][] modelOutputs = new float[batchCount][];
-
+            stopwatch.Reset();
+            stopwatch.Start();
             RunInferencesAsync(extracted, batchCount, modelOutputs);
-
+            stopwatch.Stop();
+            Trace.TraceInformation($"RunInferencesAsync time: {stopwatch.Elapsed.Milliseconds}");
+            stopwatch.Reset();
             for (int i = 0; i < batchCount - 1; i++)
             {
                 for (int k = 0; k < _reidModel.BatchSize; k++)

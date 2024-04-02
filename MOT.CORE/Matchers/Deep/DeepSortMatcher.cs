@@ -55,15 +55,18 @@ namespace MOT.CORE.Matchers.Deep
             stopwatch.Stop();
 
             // 输出经过的时间
-            Trace.TraceInformation("Predict 消耗的时间: {0}", stopwatch.Elapsed);
+            Trace.TraceInformation("Predict 消耗的时间: {0}", stopwatch.Elapsed.Milliseconds);
             // 重置计时器
             stopwatch.Reset();
+            stopwatch.Start();
             if (detectedObjects.Length == 0)
             {
                 return new List<ITrack>();
             }
             Vector[] appearances = _appearanceExtractor.Predict(frame, detectedObjects).ToArray();
-
+            stopwatch.Stop();
+            Trace.TraceInformation($"Appearance Predict time: {stopwatch.Elapsed.Milliseconds}");
+            stopwatch.Reset();
             if (_trackers.Count == 0)
                 return Init(detectedObjects, appearances);
 
