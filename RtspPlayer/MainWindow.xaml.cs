@@ -61,7 +61,7 @@ namespace RtspPlayer
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 var mat = OpenCvSharp.Extensions.BitmapConverter.ToMat(frame);
-                if (frameCounter++ % 6 == 0)
+                if (frameCounter++ % 2 == 0)
                 {
                     stopwatch.Start();
                     var tracks = tracker.Track(frame);

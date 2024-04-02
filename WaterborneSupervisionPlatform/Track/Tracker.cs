@@ -1,13 +1,4 @@
-﻿using Microsoft.ML.OnnxRuntime;
-using MOT.CORE.Matchers.Abstract;
-using MOT.CORE.Matchers.Deep;
-using MOT.CORE.Matchers.SORT;
-using MOT.CORE.ReID.Models.Fast_Reid;
-using MOT.CORE.ReID.Models.OSNet;
-using MOT.CORE.ReID;
-using MOT.CORE.YOLO.Models;
-using MOT.CORE.YOLO;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -15,101 +6,85 @@ using System.Threading.Tasks;
 using System.Drawing;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
+using DL.Common;
+using Detecting.YoloDetector;
+using Tracing.DeepSortTracker;
+using Tracing.DeepSortTracker.Matchers.Abstract;
+using DL.Common.YLOL;
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
+
 
 namespace WaterborneSupervisionPlatform.Track
 {
     public class Tracker: IDisposable
     {
-        private MatcherOption matcherOption;
-        private float targetConfidence;
-        private Matcher matcher;
 
+        private readonly ServiceCollection _services;
+        private readonly ServiceProvider _provider;
+
+        private MatcherOption options;
+        private float targetConfidence;
+
+
+
+        private YoloDetector yoloDetector;
+        private DeepSortTracer deepSortTracker;
+
+        private Stopwatch stopwatch = new Stopwatch();
         public Tracker(string configPath="config.json")
         {
-            matcherOption = ReadMatcherOptionFromJson(configPath);
+            options = ReadMatcherOptionFromJson(configPath);
             
-            matcher = ConstructMatcherFromOptions(matcherOption);
-            float targetConfidence = float.Clamp(matcherOption.TargetConfidence, 0.0f, 1.0f);
+            targetConfidence = float.Clamp(options.TargetConfidence, 0.0f, 1.0f);
+
+            _services = new ServiceCollection();
+
+
+            yoloDetector = new YoloDetector(new MatcherOption());
+            deepSortTracker = new DeepSortTracer(new MatcherOption());
+
+            //yoloDetector = CreateInstance<YoloDetector>("Detecting.YoloDetector.dll", "Detecting.YoloDetector.YoloDetector",
+            //    new object?[] { new MatcherOption() });
+            //_services.AddTransient<YoloDetector>(sp => yoloDetector);
+
+            //deepSortTracker = CreateInstance<DeepSortTracer>("Tracing.DeepSortTracker.dll", "Tracing.DeepSortTracker.DeepSortTracer",
+            //    new object?[] { new MatcherOption() });
+            //_services.AddTransient<DeepSortTracer>(sp => deepSortTracker);
         }
         
 
         public IReadOnlyList<ITrack> Track(Bitmap frame)
         {
-            IReadOnlyList<ITrack> tracks = matcher.Run(frame, targetConfidence, DetectionObjectType.Boat);
+            stopwatch.Start();
+            var predictions = yoloDetector.Predict(frame, DetectionObjectType.Boat);
+            IReadOnlyList<ITrack> tracks = deepSortTracker.Track(frame, predictions.ToArray());
+            stopwatch.Stop();
+            Console.WriteLine($"Total time: {stopwatch.ElapsedMilliseconds}");
+            stopwatch.Restart();
             return tracks;
         }
 
 
-
-        private static Matcher ConstructMatcherFromOptions(MatcherOption options)
+        private static T CreateInstance<T>(string assemblyFile, string fullQualifiedClassName, object?[] parameters = null)
         {
-            IPredictor predictor = ConstructPredictorFromOptions(options);
+            Assembly assembly = Assembly.LoadFrom(assemblyFile);
+            Type type = assembly.GetType(fullQualifiedClassName);
 
-            Matcher matcher = options.MatcherType switch
+            T instance = default;
+            if (parameters == null)
             {
-                MatcherType.DeepSort => new DeepSortMatcher(predictor,
-                    ConstructAppearanceExtractorFromOptions(options),
-                    options.AppearanceWeight ?? 0.775f,
-                    options.Threshold ?? 0.5f,
-                    options.MaxMisses ?? 50,
-                    options.FramesToAppearanceSmooth ?? 40,
-                    options.SmoothAppearanceWeight ?? 0.875f,
-                    options.MinStreak ?? 8),
+                instance = (T)Activator.CreateInstance(type);
+            }
+            else
+            {
+                instance = (T)Activator.CreateInstance(type, parameters);
+            }
 
-                MatcherType.Sort => new SortMatcher(predictor,
-                    options.Threshold ?? 0.3f,
-                    options.MaxMisses ?? 15,
-                    options.MinStreak ?? 3),
-
-                MatcherType.Deep => new DeepMatcher(predictor,
-                    ConstructAppearanceExtractorFromOptions(options),
-                    options.Threshold ?? 0.875f,
-                    options.MaxMisses ?? 10,
-                    options.MinStreak ?? 4),
-
-                _ => throw new Exception("Matcher cannot be constructed.")
-            };
-
-            return matcher;
+            return instance;
         }
 
-        private static IPredictor ConstructPredictorFromOptions(MatcherOption options)
-        {
-            if (string.IsNullOrEmpty(options.DetectorFilePath))
-                throw new ArgumentNullException($"{nameof(options.DetectorFilePath)} was undefined.");
-
-            IPredictor predictor = options.YoloVersion switch
-            {
-                YoloVersion.Yolo640 => new YoloScorer<Yolo640v5>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
-                YoloVersion.Yolo1280 => new YoloScorer<Yolo1280v5>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
-                YoloVersion.Yolov8 => new YoloScorer<Yolo640v8>(File.ReadAllBytes(options.DetectorFilePath), SessionOptions.MakeSessionOptionWithCudaProvider()),
-                _ => throw new Exception("Yolo predictor cannot be constructed.")
-            };
-
-            return predictor;
-        }
-
-        private static IAppearanceExtractor ConstructAppearanceExtractorFromOptions(MatcherOption options)
-        {
-            if (string.IsNullOrEmpty(options.AppearanceExtractorFilePath))
-                throw new ArgumentNullException($"{nameof(options.AppearanceExtractorFilePath)} was undefined.");
-
-            if (options.AppearanceExtractorVersion == null)
-                throw new ArgumentNullException($"{nameof(options.AppearanceExtractorVersion)} was undefined.");
-
-            const int DefaultExtractorsCount = 4;
-
-            IAppearanceExtractor appearanceExtractor = options.AppearanceExtractorVersion switch
-            {
-                AppearanceExtractorVersion.OSNet => new ReidScorer<OSNet_x1_0>(File.ReadAllBytes(options.AppearanceExtractorFilePath),
-                    options.ExtractorsInMemoryCount ?? DefaultExtractorsCount, SessionOptions.MakeSessionOptionWithCudaProvider()),
-                AppearanceExtractorVersion.FastReid => new ReidScorer<Fast_Reid_mobilenetv2>(File.ReadAllBytes(options.AppearanceExtractorFilePath),
-                    options.ExtractorsInMemoryCount ?? DefaultExtractorsCount, SessionOptions.MakeSessionOptionWithCudaProvider()),
-                _ => throw new Exception("Appearance extractor cannot be constructed.")
-            };
-
-            return appearanceExtractor;
-        }
 
         private static MatcherOption ReadMatcherOptionFromJson(string json)
         {
@@ -130,7 +105,7 @@ namespace WaterborneSupervisionPlatform.Track
 
         public void Dispose()
         {
-            matcher.Dispose();
+
         }
 
     }
